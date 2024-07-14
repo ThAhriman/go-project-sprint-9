@@ -18,14 +18,13 @@ func Generator(ctx context.Context, ch chan<- int64, fn func(int64)) {
 	// ...
 
 	var sum int64 = 1
-	var dif int64 = 1
+	defer close(ch)
 	for {
 		select {
 		case ch <- sum:
 			fn(sum)
-			sum += dif
+			sum++
 		case <-ctx.Done():
-			close(ch)
 			return
 
 		}
@@ -39,11 +38,7 @@ func Worker(in <-chan int64, out chan<- int64) {
 	// ...
 	defer close(out)
 
-	for {
-		v, ok := <-in
-		if !ok {
-			break
-		}
+	for v := range in {
 		out <- v
 		time.Sleep(1 * time.Millisecond)
 	}
@@ -64,8 +59,8 @@ func main() {
 
 	// генерируем числа, считая параллельно их количество и сумму
 	go Generator(ctx, chIn, func(i int64) {
-		inputSum = atomic.AddInt64(&inputSum, i)
-		inputCount = atomic.AddInt64(&inputCount, 1)
+		atomic.AddInt64(&inputSum, i)
+		atomic.AddInt64(&inputCount, 1)
 
 	})
 
@@ -91,15 +86,13 @@ func main() {
 		wg.Add(1)
 		go func(in <-chan int64, i int64) {
 			defer wg.Done()
-			for range outs {
-				for {
-					v, ok := <-in
-					if !ok {
-						break
-					}
-					chOut <- v
-					amounts[i]++
+			for {
+				v, ok := <-in
+				if !ok {
+					break
 				}
+				chOut <- v
+				amounts[i]++
 			}
 		}(outs[i], int64(i))
 	}
